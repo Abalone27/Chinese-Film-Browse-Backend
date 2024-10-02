@@ -3,7 +3,7 @@ const mysql = require('mysql2')
 const bcrypt = require('bcryptjs')
 const bodyParser = require('body-parser')
 const cors = require('cors')
-const jwt =require('jsonwebtoken')
+const session = require('express-session');
 
 const connection=mysql.createConnection({
     host:'localhost',
@@ -23,15 +23,37 @@ connection.connect(err=>{
 const app = express()
 const port = 3000
 
-app.use(cors())
+// 跨域资源共享 (CORS) 配置，允许前端发起跨域请求
+app.use(cors({
+    origin: 'http://47.96.94.197:5173',  // 前端地址
+    credentials: true,  // 允许携带 Cookie
+    methods: ['GET', 'POST', 'OPTIONS'],  // 允许的请求方法
+    allowedHeaders: ['Content-Type']  // 允许的请求头
+}));
+
+// 会话中间件
+app.use(session({
+    secret: 'your_secret_key',
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+        secure: false,  // 使用 HTTPS 时设置为 true
+        httpOnly: true,
+        maxAge: 1000 * 60 * 60  // 1 小时
+    }
+}));
+
+
+
 app.use(bodyParser.json())
 
-app.get('/',(req,res)=>{
-    res.send('hello world')    
-})
+app.options('*', (req, res) => {
+    res.sendStatus(200);
+});
+
 
 // 注册路由接口
-app.post('/api/register',async (req,res)=>{
+app.post('/register',async (req,res)=>{
     const {username,password} =req.body
 
     if(!username || !password) {
@@ -70,7 +92,7 @@ app.post('/api/register',async (req,res)=>{
 })
 
 // 登陆路由接口
-app.post('/api/login',(req,res)=>{
+app.post('/login',(req,res)=>{
     const {username,password} =req.body
     
     // 查询用户
@@ -100,32 +122,12 @@ app.post('/api/login',(req,res)=>{
                 })
             }
 
-            // 创建JWT token
-            const token = jwt.sign({
-                id:user.id,
-                username:user.name
-            },'your_jwt_secret',{
-                expiresIn:'1h'
-            })
-
             console.log('用户登陆成功')
-            return res.json({success:true,token})
+            return res.json({success:true})
         })
         
     })
 
-    const authenticateToken = (req, res, next) => {
-        const authHeader = req.headers['authorization'];
-        const token = authHeader && authHeader.split(' ')[1];  // 提取 Bearer Token
-      
-        if (!token) return res.sendStatus(401);  // 没有 token，返回 401 未授权
-      
-        jwt.verify(token, 'your_jwt_secret', (err, user) => {
-          if (err) return res.sendStatus(403);  // token 无效，返回 403 禁止访问
-          req.user = user;  // 将用户信息存储在 req 对象中
-          next();  // 继续执行后续的请求处理
-        });
-      };
 })
 
 app.listen(port,()=>{
