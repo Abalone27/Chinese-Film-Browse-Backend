@@ -13,6 +13,7 @@ const io = new Server(server, {
       credentials: true  // 允许凭证（如Cookies）
     }
   });
+let users = {}; // 用于记录连接的用户和用户名的对应关系
 const {getFormattedDate} =require('./timetrans')
 let clientCount = 0
 
@@ -146,10 +147,10 @@ app.listen(port,()=>{
 
 // Chat Room
 io.on('connection',socket=>{
+    const usrname = socket.handshake.query.username
+    users[socket.id] = usrname
+    console.log(`A user connected: ${usrname}`);
 
-    console.log(`A user connected: ${socket.id}`);
-
-    const usrname = `用户_${socket.id}`
     clientCount++
 
     // database操作
@@ -168,24 +169,26 @@ io.on('connection',socket=>{
     io.emit("show count",clientCount)
 
     // 监听用户发送的消息保存到数据库并输出
-    socket.on('chat message',data=>{
-        // save message
-        const query = 'INSERT INTO messages (msg,created_at,color) VALUES (?,?,?)'
-        connection.query(query,[data.msg,data.created_at,data.color],(err,result)=>{
-            if(err){
-                console.error('保存聊天记录时出错'+err.stack)
-                return
+    socket.on('chat message', data => {
+        const usrname = users[socket.id];
+        const query = 'INSERT INTO messages (msg, created_at, color, username) VALUES (?, ?, ?, ?)';
+        connection.query(query, [data.msg, data.created_at, data.color, usrname], (err, result) => {
+            if (err) {
+                console.error('保存聊天记录时出错: ' + err.stack);
+                return;
             }
-            console.log('消息记录'+data.msg+"已保存到数据库")
-        })
-
-        io.emit('chat message',data)
-    })
+            console.log(`消息记录 ${data.msg} 已保存到数据库`);
+        });
+    
+        // 广播消息，附加用户名
+        io.emit('chat message', { ...data, username: usrname });
+    });
     socket.on('disconnect',()=>{
         io.emit("login message",{msg:"哎！有人离开了...",created_at:getFormattedDate()})
         clientCount--
         // 发送在线人数
         io.emit("show count",clientCount)
+        delete users[socket.id];  // 删除记录
     })
 })
 
